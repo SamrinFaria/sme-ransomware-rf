@@ -24,12 +24,13 @@ def _fetch(path: str) -> bytes:
     return r.content
 
 def fetch_to_csv() -> pd.DataFrame:
+    # 1) Try Excel
     try:
         excel_bytes = _fetch("final%20ds.xlsx")
         xls = pd.ExcelFile(io.BytesIO(excel_bytes))
         sheet_name = None
         for s in xls.sheet_names:
-            if s.lower() == "dataset":
+            if str(s).strip().lower() == "dataset":
                 sheet_name = s
                 break
         if sheet_name is None:
@@ -44,34 +45,46 @@ def fetch_to_csv() -> pd.DataFrame:
             try:
                 b = _fetch(name)
                 part = pd.read_csv(io.BytesIO(b))
-                if "label" in [c.lower() for c in part.columns]:
+                cols_l = [str(c).strip().lower() for c in part.columns]
+                if "label" in cols_l:
                     dfs.append(part)
                     print(f"[INFO] loaded {name} with shape {part.shape}")
+                else:
+                    print(f"[INFO] {name} has no 'label' column; skipping")
             except Exception as ee:
-                print(f("[INFO] skip {name}: {ee}"))
+                print(f"[INFO] skip {name}: {ee}")
         if not dfs:
             raise RuntimeError("Could not load any CSVs from the dataset repo.")
-        all_cols = sorted(set().union(*map(set, [d.columns for d in dfs])))
+        # Align columns & concatenate
+        all_cols = sorted(set().union(*[set(d.columns) for d in dfs]))
         dfs = [d.reindex(columns=all_cols, fill_value=0) for d in dfs]
         df = pd.concat(dfs, axis=0, ignore_index=True).drop_duplicates()
 
+    # 2) Normalize label column name safely
     label_col = None
-    for c in df.columns:
-        if c.lower() in ("label", "class", "target", "y"):
+    lower_map = {c: str(c).strip().lower() for c in df.columns}
+    for c, lc in lower_map.items():
+        if lc in ("label", "class", "target", "y"):
             label_col = c
             break
     if label_col is None:
         raise RuntimeError("No label/target column found.")
+
     df = df.rename(columns={label_col: "label"})
+
+    # 3) Keep only numeric + label (label can be non-numeric initially)
     num_cols = df.select_dtypes(include=["number", "bool"]).columns.tolist()
     if "label" not in num_cols:
         num_cols.append("label")
     df = df[num_cols].copy()
+
+    # 4) Clean & coerce label to binary {0,1}
     df = df.dropna(subset=["label"])
     feat_cols = [c for c in df.columns if c != "label"]
     df = df.dropna(subset=feat_cols, how="all").fillna(0)
     df["label"] = pd.to_numeric(df["label"], errors="coerce").fillna(0).astype(int)
     df["label"] = df["label"].clip(0, 1)
+
     df.to_csv(OUT_CSV, index=False)
     print(f"[OK] wrote {OUT_CSV} with shape {df.shape}")
     return df
@@ -143,7 +156,7 @@ def main():
     parser.add_argument("--test-size", type=float, default=0.25)
     parser.add_argument("--skip-download", action="store_true")
     args = parser.parse_args()
-    if args.skip_download and os.path.exists(OUT_CSV):
+    if args.skip-download and os.path.exists(OUT_CSV):
         df = pd.read_csv(OUT_CSV)
         print(f"[INFO] loaded existing {OUT_CSV} with shape {df.shape}")
     else:
