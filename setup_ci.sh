@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[+] Creating GitHub Actions workflow structure..."
+mkdir -p .github/workflows
+
+cat > .github/workflows/rf-ci.yml <<'YAML'
+name: rf-baseline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run RF baseline
+        run: |
+          python rf_pipeline.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rf-results
+          path: |
+            dataset.csv
+            metrics.csv
+            confusion_matrix_run*.png
+YAML
+
+echo "[OK] Workflow created at .github/workflows/rf-ci.yml"
+echo "Commit and push your repo, then check the Actions tab."
