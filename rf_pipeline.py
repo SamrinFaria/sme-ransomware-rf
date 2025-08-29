@@ -156,7 +156,7 @@ def main():
     parser.add_argument("--test-size", type=float, default=0.25)
     parser.add_argument("--skip-download", action="store_true")
     args = parser.parse_args()
-    if args.skip-download and os.path.exists(OUT_CSV):
+    if args.skip_download and os.path.exists(OUT_CSV):
         df = pd.read_csv(OUT_CSV)
         print(f"[INFO] loaded existing {OUT_CSV} with shape {df.shape}")
     else:
